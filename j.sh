@@ -2,10 +2,16 @@
 
 j() {
     local datafile=$HOME/.j
+    exec 9>$HOME/.j.lock
+    flock --timeout 5 9
     if [ "$1" = "--add" ]; then
         shift
         # $HOME isn't worth matching
-        [ "$*" = "$HOME" ] && return
+        if [ "$*" = "$HOME" ]
+        then
+            flock -u 9
+            return
+        fi
         awk -v q="$*" -v t="$(date +%s)" -F"|" '
             BEGIN { l[q] = 1; d[q] = t }
             $2 >= 1 {
@@ -36,11 +42,20 @@ j() {
         ' $datafile 2>/dev/null
     else
         # list/go (must set $JPY)
-        [ -f "$JPY" ] || return
+        if ! [ -f "$JPY" ]
+        then
+            flock -u 9
+            return
+        fi
         cd="$($JPY -f $datafile $*)"
-        [ -z "$cd" -o "$cd" = "$PWD" ] && return
+        if [ -z "$cd" -o "$cd" = "$PWD" ]
+        then
+            flock -u 9
+            return
+        fi
         cd "$cd"
     fi
+    flock -u 9
 }
 # tab completion (only works in bash for now)
 [ "$SHELL" = "/bin/bash" ] && complete -C 'j --complete "$COMP_LINE"' j
